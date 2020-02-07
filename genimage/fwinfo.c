@@ -15,10 +15,8 @@
 #endif
 
 
-static
-char *
-GetOemKey(char **OemKeyName)
-{
+static char *
+GetOemKey(char **OemKeyName) {
     char *start = NULL;
     int keygot = 0;
     char *Key = *OemKeyName;
@@ -56,14 +54,13 @@ GetOemKey(char **OemKeyName)
 
 
 
-UINT32 
+uint32_t 
 CreateFirmwareInfo(unsigned char *Data, char * BuildFile,
-		unsigned char Major,unsigned char Minor,dictionary *d)
-{
+		unsigned char Major,unsigned char Minor,dictionary *d) {
 	unsigned int BuildNo;
 	unsigned long ProductId;
 	char *ProductName;
-	UINT32 len = 0;
+	uint32_t len = 0;
 	unsigned char *Desc;
 	FILE *Buildfd;
 #if RELEASE_NAME_REQUIRED

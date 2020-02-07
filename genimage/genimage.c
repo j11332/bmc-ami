@@ -12,35 +12,34 @@
 #include "iniparser.h"
 #include "fmh.h"
 
-typedef struct sc
-{
+typedef struct sc {
 	char Name[9];
-	UINT32 Loc;
-	UINT32 Size;
-	unsigned char Major;
-	unsigned char Minor;
+	uint32_t Loc;
+	uint32_t Size;
+	uint8_t Major;
+	uint8_t Minor;
 	struct sc *Next;
 } SECTION_CHAIN;
 
-unsigned char FirmwareInfo[64*1024];
+uint8_t FirmwareInfo[64*1024];
+extern char *optarg;
 
 int  ParseIniFile(char * ini_name);
-UINT32  FillModuleInfo(MODULE_INFO *Mod,char *InFile);
-int WriteFMHtoFile(FILE *fd,FMH *fmh,ALT_FMH *altfmh,UINT32 Start,
-													UINT32 BlockSize);
-int WriteModuletoFile(FILE *Outfd,char *InFile, UINT32 Location);
-int WriteFirmwareInfo(FILE *Outfd,char *Data,UINT32 Size, UINT32 Location);
-int CalculateImageChecksum(FILE* fd,unsigned long ImageHeaderStart);
+uint32_t  FillModuleInfo(MODULE_INFO *Mod,char *InFile);
+int WriteFMHtoFile(FILE *fd, FMH *fmh, ALT_FMH *altfmh, uint32_t Start, size_t Size);
+int WriteModuletoFile(FILE *Outfd,char *InFile, uint32_t Location);
+int WriteFirmwareInfo(FILE *Outfd,char *Data, size_t Size, uint32_t Location);
+int CalculateImageChecksum(FILE* fd, size_t ImageHeaderStart);
 
-extern UINT32 CreateFirmwareInfo(unsigned char *Data, char *BuildFile,
-			unsigned char Major, unsigned char Minor,dictionary *d);
+extern uint32_t CreateFirmwareInfo(uint8_t *Data, char *BuildFile,
+			uint8_t Major, uint8_t Minor,dictionary *d);
 
-extern unsigned char  CalculateModule100(unsigned char *Buffer, unsigned long Size);
+extern uint8_t  CalculateModule100(uint8_t *Buffer, uint32_t Size);
 static char CmdInDir[256]; 
 static char CmdOutDir[256];
 static char CmdCfgFile[256];
 
-static unsigned long gBlkSize;
+static size_t gBlkSize;
 
 /* Assumption: We are using only one FilePath and so we assume that 
  * two parallel calls to Convert2FullPath will not be called. Other
@@ -48,9 +47,7 @@ static unsigned long gBlkSize;
  * ones will be destroyed */
 char FilePath[256];
 
-char *
-Convert2FullPath(char *Dir, char *FileName)
-{
+char *Convert2FullPath(char *Dir, char *FileName) {
 	int len;
 		
 	/* No Path or Path is empty */
@@ -77,10 +74,8 @@ Convert2FullPath(char *Dir, char *FileName)
 	return FilePath;
 }
 
-static
-void
-Usage(char *Prog)
-{
+static void
+Usage(char *Prog) {
 	printf("Usage is %s <Args>\n",Prog);
 	printf("Args are :\n");
 	printf("\t -I Input Files Path\n"); 
@@ -90,8 +85,7 @@ Usage(char *Prog)
 }
 
 int 
-main(int argc, char * argv[])
-{
+main(int argc, char * argv[]) {
 	int	status;
 	int opt;
 	char *ProgName;
@@ -130,9 +124,8 @@ main(int argc, char * argv[])
 }
 
 void
-DisplayFlashMap(SECTION_CHAIN *Chain, UINT32 FlashSize)
-{
-	UINT32 Loc = 0;
+DisplayFlashMap(SECTION_CHAIN *Chain, size_t FlashSize) {
+	uint32_t Loc = 0;
 	
 	printf("\n");	
 	printf("-----------------------------------------------\n");
@@ -155,9 +148,8 @@ DisplayFlashMap(SECTION_CHAIN *Chain, UINT32 FlashSize)
 }
 
 int
-AddToUsedChain(SECTION_CHAIN **pChain,UINT32 Loc, UINT32 Size, char *Name,
-				unsigned char Major,unsigned char Minor)
-{
+AddToUsedChain(SECTION_CHAIN **pChain,uint32_t Loc, uint32_t Size, char *Name,
+				uint8_t Major,uint8_t Minor) {
 	SECTION_CHAIN *newchain, *Prev;
 	SECTION_CHAIN *Chain = *pChain;
 
@@ -243,8 +235,7 @@ AddToUsedChain(SECTION_CHAIN **pChain,UINT32 Loc, UINT32 Size, char *Name,
 
 
 int 
-ParseIniFile(char* ini_name)
-{
+ParseIniFile(char* ini_name) {
 	/* INI Parser Related */
 	dictionary *d;			/* Dictionary */
 	int nsecs,i;			/* Number of Sections */
@@ -253,14 +244,14 @@ ParseIniFile(char* ini_name)
 	
 	/* Global Information */	
 	char *OutFile;			/* Output Bin File */
-	INT32 FlashSize;			/* Size of Flash */
-	INT32 BlockSize;			/* Size of each Flash Block */
+	int32_t FlashSize;			/* Size of Flash */
+	int32_t BlockSize;			/* Size of each Flash Block */
 	char *InDir;			/* Location of Input Files */
 	char *OutDir;			/* Location of Output File */
 
 	/* Output File Creation Related */	
 	FILE *Outfd;			/* Output File Descriptor */
-	UINT32 Erase;	/* Dummy char used to create the output file */
+	uint32_t Erase;	/* Dummy char used to create the output file */
 	SECTION_CHAIN *UsedChain;/* Used for checking overlapping sections */
 
 	/* FMH Related */
@@ -268,19 +259,19 @@ ParseIniFile(char* ini_name)
 	ALT_FMH altfmh,*paltfmh;	/* Alternate Flash Module Header */
 	MODULE_INFO mod;		/* Module Information */
 	char *InFile;			/* Input File for FMH Section */
-	UINT32 InFileSize; /* Size of Section File */
-	UINT32 AllocSize;/* Total Allocation Size for this FMH */
-	UINT32 MinAllocSize;/* Mininmum Calculated Allocation Size */
-	UINT32 FMHLoc;	/* Alternate FMH Location */
+	uint32_t InFileSize; /* Size of Section File */
+	uint32_t AllocSize;/* Total Allocation Size for this FMH */
+	uint32_t MinAllocSize;/* Mininmum Calculated Allocation Size */
+	uint32_t FMHLoc;	/* Alternate FMH Location */
 	char *LocationStr;		/* Flash Location String */ 
-	UINT32 Location;	/* Flash Location Value */
+	uint32_t Location;	/* Flash Location Value */
 
 	/* RACTRENDS releted */
 	char *BuildFile;		/* Build Number File */
 	char *VersionStr;		/* Major and Minor String */
 	int FirmwareMajor,FirmwareMinor;
-	unsigned char ModuleFormat;
-	unsigned long ImageHeaderStart = 0xFFFFFFFF; /* This points to the MODULE FIRMWARE start address */
+	uint8_t ModuleFormat;
+	uint32_t ImageHeaderStart = 0xFFFFFFFF; /* This points to the MODULE FIRMWARE start address */
 	int UseFMH=1;
 
 	/*Load the ini File into dictionary*/	
@@ -375,20 +366,20 @@ ParseIniFile(char* ini_name)
 		
 		/* Save Section Name in Module Information. Strip to max 8 characters */
 		if (strlen(SecName) > 8)
-			strncpy((char *)mod.Module_Name,SecName,8);
+			strncpy((char *)mod.name,SecName,8);
 		else
-			strcpy((char *)mod.Module_Name,SecName);		
+			strcpy((char *)mod.name,SecName);		
 
 		/* Get Module Version */
 		sprintf(Key,"%s:Major",SecName);
-		mod.Module_Ver_Major = iniparser_getint(d,Key,0); 
+		mod.ver_Major = iniparser_getint(d,Key,0); 
 		sprintf(Key,"%s:Minor",SecName);
-		mod.Module_Ver_Minor = iniparser_getint(d,Key,0); 
+		mod.ver_Minor = iniparser_getint(d,Key,0); 
 
 		/* Get Module Type */
 		sprintf(Key,"%s:Type",SecName);
-		mod.Module_Type = iniparser_getint(d,Key,0x0000);
-		ModuleFormat = (mod.Module_Type >> 8);
+		mod.type = iniparser_getint(d,Key,0x0000);
+		ModuleFormat = (mod.type >> 8);
 		
 		/* Check if altFMH to be used */		
 		sprintf(Key,"%s:FMHLoc",SecName);
@@ -398,63 +389,63 @@ ParseIniFile(char* ini_name)
 		sprintf(Key,"%s:Offset",SecName);
 		/* If Alternate FMH to be used, offset will be 0 if not specified */
 		if (FMHLoc != 0)
-			mod.Module_Location = iniparser_getlong(d,Key,0);		
+			mod.Location = iniparser_getlong(d,Key,0);		
 		else
 		{
-		if ((mod.Module_Type == MODULE_JFFS) || (mod.Module_Type == MODULE_JFFS2)||
-		    (mod.Module_Type == MODULE_JFFS_CONFIG) ||
-		    (mod.Module_Type == MODULE_JFFS2_CONFIG) ||
+		if ((mod.type == MODULE_JFFS) || (mod.type == MODULE_JFFS2)||
+		    (mod.type == MODULE_JFFS_CONFIG) ||
+		    (mod.type == MODULE_JFFS2_CONFIG) ||
 		    (ModuleFormat == MODULE_FORMAT_JFFS) ||
 		    (ModuleFormat == MODULE_FORMAT_JFFS2))
-			mod.Module_Location = iniparser_getlong(d,Key,BlockSize);		
+			mod.Location = iniparser_getlong(d,Key,BlockSize);		
 		else
-			mod.Module_Location = iniparser_getlong(d,Key,0x40);		
+			mod.Location = iniparser_getlong(d,Key,0x40);		
 		}
 		if (!UseFMH)
-			mod.Module_Location = 0;
+			mod.Location = 0;
 		
 
 		/* Get Flags */
 		sprintf(Key,"%s:BootOS",SecName);
 		if (iniparser_getboolean(d,Key,0) == 1)
-			mod.Module_Flags |= MODULE_FLAG_BOOTPATH_OS;
+			mod.Flags |= MODULE_FLAG_BOOTPATH_OS;
 		sprintf(Key,"%s:BootDIAG",SecName);
 		if (iniparser_getboolean(d,Key,0) == 1)
-			mod.Module_Flags |= MODULE_FLAG_BOOTPATH_DIAG;
+			mod.Flags |= MODULE_FLAG_BOOTPATH_DIAG;
 		sprintf(Key,"%s:BootRECO",SecName);
 		if (iniparser_getboolean(d,Key,0) == 1)
-			mod.Module_Flags |= MODULE_FLAG_BOOTPATH_RECOVERY;
+			mod.Flags |= MODULE_FLAG_BOOTPATH_RECOVERY;
 		sprintf(Key,"%s:CopyToRAM",SecName);
 		if (iniparser_getboolean(d,Key,0) == 1)
-			mod.Module_Flags |= MODULE_FLAG_COPY_TO_RAM;
+			mod.Flags |= MODULE_FLAG_COPY_TO_RAM;
 		sprintf(Key,"%s:Execute",SecName);
 		if (iniparser_getboolean(d,Key,0) == 1)
-			mod.Module_Flags |= MODULE_FLAG_EXECUTE;
+			mod.Flags |= MODULE_FLAG_EXECUTE;
 		sprintf(Key,"%s:Checksum",SecName);
 		if (iniparser_getboolean(d,Key,0) == 1)
-			mod.Module_Flags |= MODULE_FLAG_VALID_CHECKSUM;
+			mod.Flags |= MODULE_FLAG_VALID_CHECKSUM;
 		sprintf(Key,"%s:Compress",SecName);
-		mod.Module_Flags |= iniparser_getint(d,Key,0x00) 
+		mod.Flags |= iniparser_getint(d,Key,0x00) 
 							<< MODULE_FLAG_COMPRESSION_LSHIFT;
 
 		/* Get Load Address */
 		sprintf(Key,"%s:Load",SecName);
-		mod.Module_Load_Address = iniparser_getlong(d,Key,0xFFFFFFFF);
-		if (mod.Module_Load_Address == 0xFFFFFFFF)
-			mod.Module_Flags &= (~MODULE_FLAG_COPY_TO_RAM);
+		mod.Load_Address = iniparser_getlong(d,Key,0xFFFFFFFF);
+		if (mod.Load_Address == 0xFFFFFFFF)
+			mod.Flags &= (~MODULE_FLAG_COPY_TO_RAM);
 
 		/* Get Allocation Size */
 		sprintf(Key,"%s:Alloc",SecName);
 		AllocSize = iniparser_getlong(d,Key,0);
 
 
-		if ((mod.Module_Type == MODULE_FMH_FIRMWARE) || 
-		    (mod.Module_Type == MODULE_FIRMWARE_1_4))
+		if ((mod.type == MODULE_FMH_FIRMWARE) || 
+		    (mod.type == MODULE_FIRMWARE_1_4))
 			AllocSize = BlockSize;
 			
 		/* Module Firmware is a dummy section. It does not have any data */
-		if ((mod.Module_Type != MODULE_FMH_FIRMWARE) &&
-		    (mod.Module_Type != MODULE_FIRMWARE_1_4))
+		if ((mod.type != MODULE_FMH_FIRMWARE) &&
+		    (mod.type != MODULE_FIRMWARE_1_4))
 		{
 			/* Check for mandatory Field - Input File Name */
 			sprintf(Key,"%s:File",SecName);
@@ -482,18 +473,18 @@ ParseIniFile(char* ini_name)
 #if 0			
 			/* For JFFS and JFFS2, it should be a multiple of BlockSize */
 			/* Otherwise the mtd will be mounted read only */
-			if ((mod.Module_Type == MODULE_JFFS) || 
-							(mod.Module_Type == MODULE_JFFS2))
+			if ((mod.type == MODULE_JFFS) || 
+							(mod.type == MODULE_JFFS2))
 			{		
 				InFileSize = (InFileSize+BlockSize-1);
 				InFileSize = (InFileSize/BlockSize) * BlockSize;
 			}
 #endif
 			
-			mod.Module_Size = InFileSize;
+			mod.Size = InFileSize;
 			
 			/* Calculate the Min Allocation Size */
-			MinAllocSize = mod.Module_Location + InFileSize;			
+			MinAllocSize = mod.Location + InFileSize;			
 			MinAllocSize += (BlockSize-1);
 			MinAllocSize = (MinAllocSize/BlockSize) * BlockSize;
 
@@ -514,23 +505,23 @@ ParseIniFile(char* ini_name)
 			if (VersionStr != NULL)
 			{
 				if (sscanf(VersionStr,"%d",&FirmwareMajor) == 1)
-					mod.Module_Ver_Major = (unsigned char)FirmwareMajor;
+					mod.ver_Major = (uint8_t)FirmwareMajor;
 			}
 
 			VersionStr = getenv("FW_MINOR");
 			if (VersionStr != NULL)
 			{
 				if (sscanf(VersionStr,"%d",&FirmwareMinor) == 1)
-					mod.Module_Ver_Minor = (unsigned char)FirmwareMinor;
+					mod.ver_Minor = (uint8_t)FirmwareMinor;
 			}
 			
 			/* For Ractrends Series Firmware Section has some vendor specific Info */
 			BuildFile = Convert2FullPath(OutDir,"BUILDNO");
-			mod.Module_Size = CreateFirmwareInfo(&FirmwareInfo[0],BuildFile,
-										mod.Module_Ver_Major,mod.Module_Ver_Minor,d);
+			mod.Size = CreateFirmwareInfo(&FirmwareInfo[0],BuildFile,
+										mod.ver_Major,mod.ver_Minor,d);
 										
-			if (mod.Module_Size > ((64*1024) - 0x40))
-				mod.Module_Size = 0;
+			if (mod.Size > ((64*1024) - 0x40))
+				mod.Size = 0;
 		}
 	
 		/* Read Flash Location .It can be either START or END or numeric value */
@@ -567,15 +558,15 @@ ParseIniFile(char* ini_name)
 		/* Check for overlapping sections and add location and size 
 		 * and section name to the chain of used areas */
 		if (AddToUsedChain(&UsedChain,Location,AllocSize,SecName,
-						mod.Module_Ver_Major,mod.Module_Ver_Minor) != 0)
+						mod.ver_Major,mod.ver_Minor) != 0)
 				break;
 
 		/* Create FMH and Alternate FMH if required */
 		CreateFMH(&fmh,AllocSize,&mod,Location+FMHLoc);
-		if ((mod.Module_Type == MODULE_FMH_FIRMWARE) ||
-		    (mod.Module_Type == MODULE_FIRMWARE_1_4))
+		if ((mod.type == MODULE_FMH_FIRMWARE) ||
+		    (mod.type == MODULE_FIRMWARE_1_4))
 		{
-			fmh.FMH_Header_Checksum = 0x00;
+			fmh.Header_Checksum = 0x00;
 			ImageHeaderStart = Location;			
 		}
 		paltfmh = NULL;
@@ -587,10 +578,10 @@ ParseIniFile(char* ini_name)
 		}
 
 
-		if ((mod.Module_Type != MODULE_FMH_FIRMWARE) &&
-		    (mod.Module_Type != MODULE_FIRMWARE_1_4))
+		if ((mod.type != MODULE_FMH_FIRMWARE) &&
+		    (mod.type != MODULE_FIRMWARE_1_4))
 		{
-			if (WriteModuletoFile(Outfd,InFile,Location+mod.Module_Location)!= 0)
+			if (WriteModuletoFile(Outfd,InFile,Location+mod.Location)!= 0)
 			{
 				printf("ERROR: Unable to Write Module of Section %s\n",SecName);
 				break;
@@ -598,12 +589,12 @@ ParseIniFile(char* ini_name)
 		}
 		else
 		{
-			if (mod.Module_Size > 0)
+			if (mod.Size > 0)
 			{
-				if (WriteFirmwareInfo(Outfd,(char *)FirmwareInfo,mod.Module_Size,
-												Location+mod.Module_Location)!= 0)
+				if (WriteFirmwareInfo(Outfd, (char *)FirmwareInfo,mod.Size, Location+mod.Location) != 0)
 				{
-					printf("ERROR: Unable to Write Firmware Info in Section %s\n",SecName);						 break;
+					printf("ERROR: Unable to Write Firmware Info in Section %s\n",SecName);
+					break;
 				}	
 			}
 			else
@@ -645,14 +636,13 @@ ParseIniFile(char* ini_name)
 	return 1;
 }
 
-UINT32 
-FillModuleInfo(MODULE_INFO *mod,char *InFile)
-{
+uint32_t 
+FillModuleInfo(MODULE_INFO *mod,char *InFile) {
 	struct stat InStat;
-	UINT32 FileSize;
-    UINT32 i,crc32;
+	uint32_t FileSize;
+    uint32_t i,crc32;
 	int fd;
-	unsigned char data;
+	uint8_t data;
 
 
 	/* Get the Module File Size */
@@ -680,7 +670,7 @@ FillModuleInfo(MODULE_INFO *mod,char *InFile)
 	close(fd);
 	
 	/* Fill Module Checksum */
-	mod->Module_Checksum = crc32;
+	mod->Checksum = crc32;
 	
 	
 	/* Return Module Size */
@@ -688,10 +678,9 @@ FillModuleInfo(MODULE_INFO *mod,char *InFile)
 }
 
 int 
-WriteFMHtoFile(FILE *fd,FMH *fmh,ALT_FMH *altfmh,UINT32 Start,
-														UINT32 BlockSize)
-{
-	UINT32 offset = 0;
+WriteFMHtoFile(FILE *fd,FMH *fmh,ALT_FMH *altfmh,uint32_t Start,
+														size_t BlockSize) {
+	uint32_t offset = 0;
 
 	if (altfmh != NULL)
 		offset = altfmh->FMH_Link_Address;
@@ -728,8 +717,7 @@ WriteFMHtoFile(FILE *fd,FMH *fmh,ALT_FMH *altfmh,UINT32 Start,
 }
 
 int
-WriteModuletoFile(FILE *Outfd,char *InFile, UINT32 Location)
-{
+WriteModuletoFile(FILE *Outfd,char *InFile, uint32_t Location) {
 	int Infd;
 	char data;
 
@@ -759,9 +747,7 @@ WriteModuletoFile(FILE *Outfd,char *InFile, UINT32 Location)
 	return 0;
 }
 
-int
-WriteFirmwareInfo(FILE *Outfd,char *Data,UINT32 Size, UINT32 Location)
-{
+int WriteFirmwareInfo(FILE *Outfd, char *Data, size_t Size, uint32_t Location) {
 	/* Seek Output File */
 	if (fseek(Outfd,Location,SEEK_SET) != 0)
 	{
@@ -777,17 +763,16 @@ WriteFirmwareInfo(FILE *Outfd,char *Data,UINT32 Size, UINT32 Location)
 	}
 	return 0;
 }
-int CalculateImageChecksum(FILE* fd,unsigned long ImageHeaderStart)
-{
-	unsigned long FileSize;
-	unsigned long i,crc32;
-	unsigned char data;
-	unsigned char Buffer[128];
-	unsigned char Mod100Checksum = 0;
+int CalculateImageChecksum(FILE *fd, size_t ImageHeaderStart) {
+	size_t FileSize;
+	uint32_t i,crc32;
+	uint8_t data;
+	uint8_t Buffer[128];
+	uint8_t Mod100Checksum = 0;
 
 
 	/* We want to calculate the checksum until the end of FIRMWARE MODULE section. */
-	FileSize = ImageHeaderStart+gBlkSize;
+	FileSize = ImageHeaderStart + gBlkSize;
 	printf("FileSize = 0x%lX\n",FileSize);
 
 	/* Rewind file to make sure that it's at the begining */
@@ -796,7 +781,7 @@ int CalculateImageChecksum(FILE* fd,unsigned long ImageHeaderStart)
 	BeginCRC32(&crc32);
 	for(i = 0; i < FileSize; i++)
 	{
-		if (fread(&data,sizeof(unsigned char),1,fd) != 1)
+		if (fread(&data,sizeof(uint8_t),1,fd) != 1)
 		{
 			printf("ERROR: fread failed while reading image to calculate checksum\n");
 			return 0;
@@ -810,8 +795,8 @@ int CalculateImageChecksum(FILE* fd,unsigned long ImageHeaderStart)
 	printf("Image checksum is 0x%lX\n",crc32);
 	/* Fill this image checksum in Module Checksum field of MODULE FIRMWARE */
 	fseek(fd,ImageHeaderStart+FMH_MODULE_CHECKSUM_START_OFFSET,SEEK_SET);
-	if(fwrite(&crc32,sizeof(unsigned long),1,fd) == 0)
-	if(fwrite(&crc32,sizeof(unsigned long),1,fd) == 0)
+	if(fwrite(&crc32,sizeof(uint32_t),1,fd) == 0)
+	if(fwrite(&crc32,sizeof(uint32_t),1,fd) == 0)
 	{
 		printf("ERROR: fwrite failed while updating image checksum field\n");
 		return 0;
@@ -821,12 +806,12 @@ int CalculateImageChecksum(FILE* fd,unsigned long ImageHeaderStart)
 	the begining (START) of the image. And also, that there's no alternate
 	FMH header for firmware module */
 	fseek(fd,ImageHeaderStart,SEEK_SET);
-	fread(Buffer,sizeof(unsigned char),sizeof(FMH),fd);
+	fread(Buffer,sizeof(uint8_t),sizeof(FMH),fd);
 	Mod100Checksum = CalculateModule100(Buffer,sizeof(FMH));
 	//printf("Mod100 Checksum is 0x%X\n",Mod100Checksum);
 
 	fseek(fd,ImageHeaderStart+FMH_FMH_HEADER_CHECKSUM_OFFSET,SEEK_SET);
-	if(fwrite(&Mod100Checksum,sizeof(unsigned char),1,fd) == 0)
+	if(fwrite(&Mod100Checksum,sizeof(uint8_t),1,fd) == 0)
 	{
 		printf("ERROR: fwrite failed while updating FMH modulo checksum field\n");
 		return 0;

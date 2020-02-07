@@ -11,16 +11,25 @@
 #endif
 #include "fmh.h"
 #include "crc32.h"
+#include <stdarg.h>
 
-
-unsigned char  CalculateModule100(unsigned char *Buffer, UINT32 Size);
+unsigned char CalculateModule100(unsigned char *Buffer, uint32_t Size);
 static FMH * CheckForNormalFMH(FMH *fmh);
-static UINT32  CheckForAlternateFMH(ALT_FMH *altfmh);
+static uint32_t CheckForAlternateFMH(ALT_FMH *altfmh);
 
+int gDebug = 0;
+int debugPrint(const char *format, ...){
+    va_list ap;
+    int ret = 0;
+    va_start(ap, format);
+    if (gDebug) {
+        ret = vfprintf(stderr, format, ap);
+    }
+    va_end(ap);
+    return ret;
+}
 
-unsigned char 
-CalculateModule100(unsigned char *Buffer, UINT32 Size)
-{
+unsigned char CalculateModule100(unsigned char *Buffer, uint32_t Size) {
 	unsigned char Sum=0;
 
 	while (Size--)
@@ -32,10 +41,7 @@ CalculateModule100(unsigned char *Buffer, UINT32 Size)
 	return (~Sum)+1;
 }
 
-static
-unsigned char 
-ValidateModule100(unsigned char *Buffer, UINT32 Size)
-{
+static unsigned char ValidateModule100(unsigned char *Buffer, uint32_t Size) {
 	unsigned char Sum=0;
 
 	while (Size--)
@@ -47,14 +53,11 @@ ValidateModule100(unsigned char *Buffer, UINT32 Size)
 	return Sum;
 }
 
-static
-FMH *
-CheckForNormalFMH(FMH *fmh)
-{
-	if (strncmp((char *)fmh->FMH_Signature,FMH_SIGNATURE,sizeof(FMH_SIGNATURE)-1) != 0)
+static FMH *CheckForNormalFMH(FMH *fmh) {
+	if (strncmp((char *)fmh->Signature,FMH_SIGNATURE,sizeof(FMH_SIGNATURE)-1) != 0)
 			return NULL;
 
-	if (le16_to_host(fmh->FMH_End_Signature) != FMH_END_SIGNATURE)
+	if (le16_to_host(fmh->End_Signature) != FMH_END_SIGNATURE)
 			return NULL;
 
 	if (ValidateModule100((unsigned char *)fmh,sizeof(FMH)) != 0)
@@ -64,30 +67,43 @@ CheckForNormalFMH(FMH *fmh)
 			
 }
 
-static
-UINT32 
-CheckForAlternateFMH(ALT_FMH *altfmh)
-{
+static uint32_t CheckForAlternateFMH(ALT_FMH *altfmh) {
 
-	if (strncmp((char *)altfmh->FMH_Signature,FMH_SIGNATURE,sizeof(FMH_SIGNATURE)-1) != 0)
-			return INVALID_FMH_OFFSET;
+	for(int i = 0; i < sizeof(ALT_FMH); i++){
+		debugPrint("%02X ", *((uint8_t *)(altfmh + i)));
+	}
+	debugPrint("\n");
 
-	if (le16_to_host(altfmh->FMH_End_Signature) != FMH_END_SIGNATURE)
-			return INVALID_FMH_OFFSET;
+	if (strncmp((char *)altfmh->Signature, FMH_SIGNATURE, sizeof(FMH_SIGNATURE)-1) != 0){
+		debugPrint("Invalid signature.\n");
+		return INVALID_FMH_OFFSET;
+	}
 
-	if (ValidateModule100((unsigned char *)altfmh,sizeof(ALT_FMH)) != 0)
-			return INVALID_FMH_OFFSET;
+	if (le16_to_host(altfmh->End_Signature) != FMH_END_SIGNATURE){
+		debugPrint("Invalid end signature.\n");
+		return INVALID_FMH_OFFSET;
+	}
+
+	if (ValidateModule100((unsigned char *)altfmh,sizeof(ALT_FMH)) != 0){
+		debugPrint("Invalid checksum.\n");
+		return INVALID_FMH_OFFSET;
+	}
 	
 	return le32_to_host(altfmh->FMH_Link_Address);
 
 }
 
-FMH *
-ScanforFMH(unsigned char *SectorAddr, UINT32 SectorSize)
-{
+FMH *ScanforFMH(unsigned char *SectorAddr, size_t SectorSize) {
 	FMH *fmh;
 	ALT_FMH *altfmh;
-	UINT32 FMH_Offset;
+	uint32_t FMH_Offset;
+	for(int i = 0; i < sizeof(FMH); i++){
+		if (i % 16 == 0){
+			debugPrint("\n");
+		}
+		debugPrint("%02X ", *((uint8_t *)(SectorAddr + i)));
+	}
+	debugPrint("\n");
 
 	/* Check if Normal FMH is found */
 	fmh = (FMH *)SectorAddr;
@@ -96,7 +112,7 @@ ScanforFMH(unsigned char *SectorAddr, UINT32 SectorSize)
 		return fmh;
 
 	/* If Normal FMH is not found, check for alternate FMH */
-	altfmh = (ALT_FMH *)(SectorAddr+SectorSize - sizeof(ALT_FMH));
+	altfmh = (ALT_FMH *)(SectorAddr + SectorSize - sizeof(ALT_FMH));
 	FMH_Offset = CheckForAlternateFMH(altfmh);
 	if (FMH_Offset == INVALID_FMH_OFFSET)
 		return NULL;
@@ -107,9 +123,7 @@ ScanforFMH(unsigned char *SectorAddr, UINT32 SectorSize)
 	return fmh;
 }
 
-void
-CreateFMH(FMH *fmh,UINT32 AllocatedSize, MODULE_INFO *mod, UINT32 Location)
-{
+void CreateFMH(FMH *fmh,uint32_t AllocatedSize, MODULE_INFO *mod, uint32_t Location) {
 	/* Clear the Structure */	
 	memset((void *)fmh,0,sizeof(FMH));
 
@@ -117,45 +131,42 @@ CreateFMH(FMH *fmh,UINT32 AllocatedSize, MODULE_INFO *mod, UINT32 Location)
 	memcpy((void *)&(fmh->Module_Info),(void *)mod,sizeof(MODULE_INFO));
 					
 	/* Fill the FMH Fields */		
-	strncpy((char *)fmh->FMH_Signature,FMH_SIGNATURE,sizeof(FMH_SIGNATURE)-1);
+	// strncpy((char *)fmh->Signature,FMH_SIGNATURE,sizeof(FMH_SIGNATURE)-1);
+	memcpy(fmh->Signature, FMH_SIGNATURE, sizeof(fmh->Signature));
 	fmh->FMH_Ver_Major 		= FMH_MAJOR;
-	fmh->FMH_Ver_Minor 		= FMH_MINOR;
-	fmh->FMH_Size	   		= FMH_SIZE;
-	fmh->FMH_End_Signature	= host_to_le16(FMH_END_SIGNATURE);
+	fmh->Ver_Minor 		= FMH_MINOR;
+	fmh->Size	   		= FMH_SIZE;
+	fmh->End_Signature	= host_to_le16(FMH_END_SIGNATURE);
 	
-	fmh->FMH_AllocatedSize	= host_to_le32(AllocatedSize);
-	fmh-> FMH_Location = host_to_le32(Location);
+	fmh->AllocatedSize	= host_to_le32(AllocatedSize);
+	fmh-> Location = host_to_le32(Location);
 
 	/*Calculate Header Checksum*/
-	fmh->FMH_Header_Checksum = CalculateModule100((unsigned char *)fmh,sizeof(FMH));
+	fmh->Header_Checksum = CalculateModule100((unsigned char *)fmh,sizeof(FMH));
 		
 	return;
 }
 
-void
-CreateAlternateFMH(ALT_FMH *altfmh,UINT32 FMH_Offset) 
-{
+void CreateAlternateFMH(ALT_FMH *altfmh,uint32_t FMH_Offset)  {
 	/* Clear the Structure */	
 	memset((void *)altfmh,0,sizeof(ALT_FMH));
 					
 	/* Fill the FMH Fields */		
-	strncpy((char *)altfmh->FMH_Signature,FMH_SIGNATURE,sizeof(FMH_SIGNATURE)-1);
-	altfmh->FMH_End_Signature	= host_to_le16(FMH_END_SIGNATURE);
+	// strncpy((char *)altfmh->Signature,FMH_SIGNATURE,sizeof(FMH_SIGNATURE)-1);
+	memcpy(altfmh->Signature, FMH_SIGNATURE, sizeof(altfmh->Signature));
+	altfmh->End_Signature = host_to_le16(FMH_END_SIGNATURE);
 	
-	altfmh->FMH_Link_Address	= host_to_le32(FMH_Offset);
+	altfmh->FMH_Link_Address = host_to_le32(FMH_Offset);
 
 	/*Calculate Header Checksum*/
-	altfmh->FMH_Header_Checksum = CalculateModule100((unsigned char *)altfmh,
+	altfmh->Header_Checksum = CalculateModule100((unsigned char *)altfmh,
 										sizeof(ALT_FMH));
 	return;
 }
 
-
-
-UINT32
-CalculateCRC32(unsigned char *Buffer, UINT32 Size)
-{
-    UINT32 i,crc32 = 0xFFFFFFFF;
+uint32_t CalculateCRC32(unsigned char *Buffer, size_t Size) {
+    uint32_t crc32 = 0xFFFFFFFF;
+	int i;
 
 	/* Read the data and calculate crc32 */	
     for(i = 0; i < Size; i++)
@@ -164,24 +175,17 @@ CalculateCRC32(unsigned char *Buffer, UINT32 Size)
 	return ~crc32;
 }
 
-void
-BeginCRC32(UINT32 *crc32)
-{
+void BeginCRC32(uint32_t *crc32) {
 	*crc32 = 0xFFFFFFFF;
 	return;
 }
 
-void
-DoCRC32(UINT32 *crc32, unsigned char Data)
-{
+void DoCRC32(uint32_t *crc32, unsigned char Data) {
 	*crc32=((*crc32) >> 8) ^ CrcLookUpTable[Data ^ ((*crc32) & 0x000000FF)];
 	return;
 }
 
-void
-EndCRC32(UINT32 *crc32)
-{
+void EndCRC32(uint32_t *crc32) {
 	*crc32 = ~(*crc32);
 	return;
 }
-
